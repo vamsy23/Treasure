@@ -1,3 +1,221 @@
 # Treasure
 # Calculates Probability of the direction of next 1 minute candle. We can use this with the combination of support and resistance for Entry of a scalp Trade.
 
+import requests
+import json
+import time
+from datetime import datetime, timedelta
+from urllib.parse import urljoin
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+import joblib
+
+
+class TimeChecker:
+    def __init__(self):
+        self.hours = ['{:02d}'.format(i) for i in range(24)]
+        self.minutes = ['{:02d}'.format(i) for i in range(60)]
+        self.seconds = ['{:02d}'.format(i) for i in range(60)]
+    def should_run(self):
+        # keep behavior simple: always allow run when called
+        return True
+
+
+class BinanceFetcher:
+    def __init__(self, symbols, interval='1m'):
+        self.base_url = 'https://fapi.binance.com'
+        self.path = '/fapi/v1/klines'
+        self.interval = interval
+        self.symbols = symbols
+    def get_klines(self, symbol):
+        params = {
+            'symbol': symbol,
+            'interval': self.interval,
+            'limit': '50'
+        }
+        url = urljoin(self.base_url, self.path)
+        response = requests.get(url, params=params)
+        return response.json()
+    def fetch_all(self):
+        all_data = {}
+        for sym in self.symbols:
+            print("Entity:", sym)
+            all_data[sym] = self.get_klines(sym)
+        return all_data
+
+
+class Analyzer:
+    def compute_percentage_changes(self, klines):
+        """
+        Returns lst_d2: list of (close - open) for first 49 candles (as in your code).
+        """
+        lst_d2 = []
+        for i in range(0, 49):
+            b_r = klines[i]
+            c1 = float(b_r[1])
+            c4 = float(b_r[4])
+            d1 = c4 - c1
+            e1 = (d1)
+            lst_d2.append(e1)
+        return lst_d2
+    def compute_window_ratios(self, lst_d2):
+        """
+        Compute the positivity ratio for each 5-element sliding window.
+        Returns (indices, ratios)
+        """
+        lst_q = []
+        lst_x1 = []
+        for k in range(4, len(lst_d2)):
+            k += 1
+            k2 = k - 5
+            window = lst_d2[k2:k]
+            positives = [n for n in window if n >= 0]
+            # safety: if window is empty (shouldn't be) skip
+            if len(window) == 0:
+                continue
+            ratio = len(positives) / len(window)
+            lst_q.append(ratio)
+            lst_x1.append(k)
+        return lst_x1, lst_q
+
+
+class Plotter:
+    def plot(self, x, y, label):
+        xp = np.array(x)
+        yp = np.array(y)
+        plt.plot(xp, yp, color='r', label=label)
+        plt.title(f"Positivity ratio ({label})")
+        plt.xlabel("index")
+        plt.ylabel("ratio")
+        plt.legend()
+        plt.show()
+        plt.pause(1)
+        plt.close()
+
+
+class FeatureBuilder:
+    """
+    Build features and labels using the ratio sequence.
+    For each sample:
+      X = [ratio_t-window_size, ..., ratio_t-1]  (previous window_size ratios)
+      y = ratio_t  (next ratio we want to predict)
+    """
+    def __init__(self, window_size=5):
+        self.window_size = window_size
+    def build_features_from_ratios(self, ratios):
+        X = []
+        y = []
+        w = self.window_size
+        # Need at least w + 1 values to create one sample
+        for i in range(len(ratios) - w):
+            window = ratios[i:i + w]       # previous w ratios
+            target = ratios[i + w]         # next ratio
+            X.append(window)
+            y.append(target)
+        if len(X) == 0:
+            return np.array([]), np.array([])
+        return np.array(X), np.array(y)
+
+
+class MLModel:
+    def __init__(self, model_path="ml_model.pkl"):
+        self.model_path = model_path
+        self.model = RandomForestRegressor()
+    def train(self, X, y):
+        if X is None or y is None or len(X) < 10:
+            print("⚠ Not enough ratio-based samples to train ML model")
+            return False
+        # Time-series split: keep order (no shuffle)
+        split_idx = int(len(X) * 0.8)
+        X_train, X_test = X[:split_idx], X[split_idx:]
+        y_train, y_test = y[:split_idx], y[split_idx:]
+        # Fit model
+        self.model.fit(X_train, y_train)
+        # We intentionally removed R2 printing per your request
+        print("ML Training completed (trained on ratio sequences).")
+        return True
+    def predict_next(self, feature_row):
+        feature_row = np.array(feature_row).reshape(1, -1)
+        return float(self.model.predict(feature_row)[0])
+    def save(self):
+        joblib.dump(self.model, self.model_path)
+    def load(self):
+        self.model = joblib.load(self.model_path)
+
+
+if __name__ == "__main__":
+    time_checker = TimeChecker()
+    fetcher = BinanceFetcher(symbols=["BTCUSDT"])
+    analyzer = Analyzer()
+    plotter = Plotter()
+    feature_builder = FeatureBuilder(window_size=5)
+    ml_model = MLModel()
+    while True:
+        if time_checker.should_run():
+            data = fetcher.fetch_all()
+            for sym, klines in data.items():
+                # compute raw differences (used to compute ratios)
+                lst_d2 = analyzer.compute_percentage_changes(klines)
+                # compute ratios (these are your produced results)
+                x, q = analyzer.compute_window_ratios(lst_d2)
+                # plot ratios for visibility (optional)
+                if len(x) > 0 and len(q) > 0:
+                    plotter.plot(x, q, label=sym)
+                else:
+                    print("Not enough ratio data to plot.")
+                # -----------------------------
+                # Build ML dataset from ratios
+                # -----------------------------
+                if len(q) == 0:
+                    print("No ratios available to build ML dataset; skipping ML for this symbol.")
+                    continue
+                # Build features where X are past ratios and y is next ratio
+                X, y = feature_builder.build_features_from_ratios(q)
+                print("Ratio-based X shape:", X.shape, "y shape:", y.shape)
+                trained = False
+                if X.size != 0 and y.size != 0:
+                    trained = ml_model.train(X, y)
+                    if trained:
+                        ml_model.save()
+                # -----------------------------
+                # Predict next ratio using latest ratios window
+                # -----------------------------
+                next_pred = None
+                # To predict next ratio we need the last 'window_size' ratios
+                if len(q) >= feature_builder.window_size and trained:
+                    latest_window = q[-feature_builder.window_size:]
+                    next_pred = ml_model.predict_next(latest_window)
+                    print(f"ML Predicted next ratio = {next_pred}")
+                else:
+                    print("Not enough ratio history or model not trained; skipping prediction.")
+                # -------------------------------------------------
+                # Trading logic using ratio (mean reversion)
+                # -------------------------------------------------
+                # Use the latest available ratio for decision (if present)
+                if len(q) > 0:
+                    latest_ratio = q[-1]
+                else:
+                    latest_ratio = None
+                print(f"Latest Ratio = {latest_ratio}")
+                if latest_ratio is None:
+                    print("No ratio available; cannot generate trade decision.")
+                else:
+                    # Decision logic:
+                    # - If ratio very high (>=0.8) => SHORT (overbought)
+                    # - If ratio very low (<=0.2) => LONG (oversold)
+                    # ML prediction is used as confirmation where available
+                    if latest_ratio >= 0.8 and (next_pred is None or next_pred <= 0):
+                        print("🔥 STRONG SHORT — ratio high (overbought) and ML confirms or absent")
+                    elif latest_ratio <= 0.2 and (next_pred is None or next_pred > 0):
+                        print("🔥 STRONG LONG — ratio low (oversold) and ML confirms or absent")
+                    elif latest_ratio >= 0.8:
+                        print("🔻 SHORT — ratio extremely high (overbought)")
+                    elif latest_ratio <= 0.2:
+                        print("🔺 LONG — ratio extremely low (oversold)")
+                    else:
+                        print("⚪ No Trade — neutral zone")
+        # sleep for 5 minutes
+        time.sleep(300)
