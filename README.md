@@ -1,6 +1,6 @@
 # Treasure:
-High-Frequency Ratio-Based ML Signal Engine
-Use this probability based momentum calculator with your choice of support/resistance or RSI model for trades.
+a) High-Frequency Ratio-Based ML Signal Engine
+b) Use this probability based momentum calculator with your choice of support/resistance or RSI model for trades.
 40% improvment in Entry selection.
 37% improvment in Exit strategy.
 <img width="640" height="480" alt="Treasure_plot" src="https://github.com/user-attachments/assets/e98250fe-3886-4681-b085-fc30dc2bb392" />
