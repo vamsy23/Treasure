@@ -1,20 +1,20 @@
 # Treasure:
-1. High-Frequency Ratio-Based ML Signal Engine
+1. High-Frequency Ratio-Based ML Signal Engine.
 2. Use this probability based momentum calculator with your choice of support/resistance or RSI model for trades.
-40% improvment in Entry selection.
-37% improvment in Exit strategy.
+3. 40% improvment in Entry selection.
+4. 37% improvment in Exit strategy.
 <img width="640" height="480" alt="Treasure_plot" src="https://github.com/user-attachments/assets/e98250fe-3886-4681-b085-fc30dc2bb392" />
-1. System Summary
-  A modular market-data analytics engine that:
-  Fetches Binance Futures candles
-  Computes intra-candle deltas & positivity ratios
-  Builds time-series ML features
-  Trains a RandomForest model
-  Produces long/short directional signals
-  Optimized for quant R&D and intraday signal prototyping.
+# System Summary
+1. A modular market-data analytics engine that:
+2. Fetches Binance Futures candles.
+3. Computes intra-candle deltas & positivity ratios.
+4. Builds time-series ML features.
+5. Trains a RandomForest model.
+6. Produces long/short directional signals.
+7. Optimized for quant R&D and intraday signal prototyping.
 
-2. Intended Use
-  High-frequency research
-  Microstructure pattern testing
-  Rapid alpha prototyping
-  Sliding-window ML experiments
+# Intended Use
+1. High-frequency research.
+2. Microstructure pattern testing.
+3. Rapid alpha prototyping.
+4. Sliding-window ML experiments.
